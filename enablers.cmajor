@@ -1,22 +1,22 @@
 
 /**
- * Our sound has gotten a little abrasive. We can add a filter to tone it down.
+ * In our initial version we had a parameter to control the frequency. Let's
+ * use a paramater to control the filter this time.
  *
- * Filters come in different flavours. Here we're adding a low pass filter.
- * This means we're removing high frequencies and letting lower ones pass
- * unchanged.
+ * We'll add a parameter to our main graph. The annotations make an input event
+ * or value a parameter that shows up in our UI.
  *
- * Like an Oscillator, a Filter has a frequency it operates on (sometimes
- * called cutoff). In the case of a low pass, frequencies above this cutoff
- * are removed, and frequencies below it are left unchanged.
+ * We pass the parameter along to our voices. They will all be affected when we
+ * change the parameter.
  *
- * To make our sound consistent across the keyboard, we'll set the frequency of
- * the filter to be relative to the note frequency.
+ * In order to multiply events we need another helper processor. We can rewrite
+ * our Double processor and have it multiply 2 events instead.
  */
 
 graph Main  [[ main ]] {
     output stream float out;
     input event std::midi::Message midiIn;
+    input event float filterCutoff  [[ name: "Filter Cutoff", min: 1.0f, max: 4.0f, init: 2.0f ]];
 
     let NUMBER_OF_VOICES = 8;
 
@@ -28,6 +28,7 @@ graph Main  [[ main ]] {
     connection {
         midiIn -> std::midi::MPEConverter -> allocator;
         allocator.voiceEventOut -> voices.eventIn;
+        filterCutoff -> voices.filterCutoff;
         voices -> std::levels::ConstantGain(float, 0.15f) -> out;
     }
 }
@@ -41,30 +42,44 @@ processor NoteToFrequency {
     }
 }
 
-processor Double {
-    input event float in;
+processor Multiply {
+    input event float in1;
+    input event float in2;
     output event float out;
 
-    event in(float x) {
-        out <- x * 2.0f;
+    float value1 = 1.0f;
+    float value2 = 1.0f;
+
+    event in1(float x) {
+        value1 = x;
+        out <- value1 * value2;
+    }
+
+    event in2(float x) {
+        value2 = x;
+        out <- value1 * value2;
     }
 }
 
 graph Voice {
     output stream float out;
     input event (std::notes::NoteOn, std::notes::NoteOff) eventIn;
+    input event float filterCutoff;
     
     node {
         oscillator = std::oscillators::PolyblepOscillator(float);
         envelope = std::envelopes::FixedASR(0.1f, 0.1f);
         noteToFrequency = NoteToFrequency;
         filter = std::filters::simper::Processor;
+        mul = Multiply;
     }
 
     connection {
         eventIn -> noteToFrequency;
         noteToFrequency -> oscillator.frequencyIn;
-        noteToFrequency -> Double -> filter.frequency;
+        noteToFrequency -> mul.in1;
+        filterCutoff -> mul.in2;
+        mul.out -> filter.frequency;
         eventIn -> envelope.eventIn;
         (oscillator.out * envelope.gainOut) -> filter.in;
         filter.out -> out;
