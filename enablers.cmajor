@@ -1,34 +1,45 @@
 
 /**
- * Let's make our solution better.
+ * So far our synthesizer has been only able to play one sound at a time. Let's
+ * update it so we can play chords and notes that flow into each other.
  *
- * Instead of a binary state for "is playing" it's better to use an envelope.
- *
- * The envelope describes the volume of our sound over time.
- *
- * There are different kinds of envelopes. Here we use one that allows us to
- * set two parameters:
- * - Attack describes how long a sound "fades in". A "short attack" means a
- *   sound will be at full volume very quickly, a "long attack" means the sound
- *   will build up for some time.
- * - Release is kind of the opposite. It describes how long a sound will fade
- *   out after the note is released.
+ * To do this we need multiple "voices" that are capable of sounding at the
+ * same time. To make sure the right voice is playing at the right time we can
+ * use the built in "Voice Allocator". Based on which notes are played this
+ * allocator will decide which voice should play the sound.
  */
 
 graph Main  [[ main ]] {
     output stream float out;
     input event std::midi::Message midiIn;
 
+    let NUMBER_OF_VOICES = 8;
+
+    node {
+        voices = Voice[8];
+        allocator = std::voices::VoiceAllocator(NUMBER_OF_VOICES);
+    }
+
+    connection {
+        midiIn -> std::midi::MPEConverter -> allocator;
+        allocator.voiceEventOut -> voices.eventIn;
+        voices -> out;
+    }
+}
+
+
+graph Voice {
+    output stream float out;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventIn;
+    
     node {
         generator = SoundGenerator;
-        converter = std::midi::MPEConverter;
         envelope = std::envelopes::FixedASR(0.1f, 0.1f);
     }
 
     connection {
-        midiIn -> converter;
-        converter -> generator.eventIn;
-        converter -> envelope.eventIn;
+        eventIn -> generator.eventIn;
+        eventIn -> envelope.eventIn;
         (generator.out * envelope.gainOut) -> out;
     }
 }
