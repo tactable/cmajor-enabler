@@ -1,12 +1,22 @@
 
 /**
- * So far our synthesizer has been only able to play one sound at a time. Let's
- * update it so we can play chords and notes that flow into each other.
+ * Up until now we've been using the default Cmajor example to generate sounds.
+ * This works but it might not be ideal.
  *
- * To do this we need multiple "voices" that are capable of sounding at the
- * same time. To make sure the right voice is playing at the right time we can
- * use the built in "Voice Allocator". Based on which notes are played this
- * allocator will decide which voice should play the sound.
+ * A processor that generates a sound wave is called an Oscillator.
+ *
+ * You can code your own oscillators, or use the ones provided by Cmajor.
+ *
+ * For this session we will use a built-in processor called PolyblepOscillator.
+ *
+ * PolyBLEP is a technique to prevent aliasing. Alias here refers to unwanted
+ * sounds that occur when generating sounds that are higher than what the
+ * computer can represent. This is a complex topic that is outside of the scope
+ * of this session but feel free to reach out if you have questions!
+ *
+ * Note: we're also changing the timbre of the sound. Oscillators come in
+ * different forms. Sine, Saw, Square, Pulse, Triangle, etc.. Again this could
+ * be a topic to explore further if you are interested!
  */
 
 graph Main  [[ main ]] {
@@ -23,46 +33,31 @@ graph Main  [[ main ]] {
     connection {
         midiIn -> std::midi::MPEConverter -> allocator;
         allocator.voiceEventOut -> voices.eventIn;
-        voices -> out;
+        voices -> std::levels::ConstantGain(float, 0.15f) -> out;
     }
 }
 
+processor NoteToFrequency {
+    input event (std::notes::NoteOn) eventIn;
+    output event float frequencyOut;
+    
+    event eventIn(std::notes::NoteOn e) {
+        frequencyOut <- std::notes::noteToFrequency(e.pitch);
+    }
+}
 
 graph Voice {
     output stream float out;
     input event (std::notes::NoteOn, std::notes::NoteOff) eventIn;
     
     node {
-        generator = SoundGenerator;
+        oscillator = std::oscillators::PolyblepOscillator(float);
         envelope = std::envelopes::FixedASR(0.1f, 0.1f);
     }
 
     connection {
-        eventIn -> generator.eventIn;
+        eventIn -> NoteToFrequency -> oscillator.frequencyIn;
         eventIn -> envelope.eventIn;
-        (generator.out * envelope.gainOut) -> out;
+        (oscillator.out * envelope.gainOut) -> out;
     }
-}
-
-processor SoundGenerator {
-    output stream float out;
-    input event (std::notes::NoteOn) eventIn;
-    
-    event eventIn(std::notes::NoteOn e) {
-        frequency = std::notes::noteToFrequency(e.pitch);
-    }
-
-    void main() {
-        loop {
-            out <- volume * sin (phase);
-
-            let phaseDelta = float (frequency * processor.period * twoPi);
-            phase = addModulo2Pi (phase, phaseDelta);
-            advance();
-        }
-    }
-
-    let volume = 0.15f;
-    float phase;
-    float frequency = 440.0f;
 }
