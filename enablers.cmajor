@@ -1,22 +1,17 @@
 
 /**
- * Up until now we've been using the default Cmajor example to generate sounds.
- * This works but it might not be ideal.
+ * Our sound has gotten a little abrasive. We can add a filter to tone it down.
  *
- * A processor that generates a sound wave is called an Oscillator.
+ * Filters come in different flavours. Here we're adding a low pass filter.
+ * This means we're removing high frequencies and letting lower ones pass
+ * unchanged.
  *
- * You can code your own oscillators, or use the ones provided by Cmajor.
+ * Like an Oscillator, a Filter has a frequency it operates on (sometimes
+ * called cutoff). In the case of a low pass, frequencies above this cutoff
+ * are removed, and frequencies below it are left unchanged.
  *
- * For this session we will use a built-in processor called PolyblepOscillator.
- *
- * PolyBLEP is a technique to prevent aliasing. Alias here refers to unwanted
- * sounds that occur when generating sounds that are higher than what the
- * computer can represent. This is a complex topic that is outside of the scope
- * of this session but feel free to reach out if you have questions!
- *
- * Note: we're also changing the timbre of the sound. Oscillators come in
- * different forms. Sine, Saw, Square, Pulse, Triangle, etc.. Again this could
- * be a topic to explore further if you are interested!
+ * To make our sound consistent across the keyboard, we'll set the frequency of
+ * the filter to be relative to the note frequency.
  */
 
 graph Main  [[ main ]] {
@@ -46,6 +41,15 @@ processor NoteToFrequency {
     }
 }
 
+processor Double {
+    input event float in;
+    output event float out;
+
+    event in(float x) {
+        out <- x * 2.0f;
+    }
+}
+
 graph Voice {
     output stream float out;
     input event (std::notes::NoteOn, std::notes::NoteOff) eventIn;
@@ -53,11 +57,16 @@ graph Voice {
     node {
         oscillator = std::oscillators::PolyblepOscillator(float);
         envelope = std::envelopes::FixedASR(0.1f, 0.1f);
+        noteToFrequency = NoteToFrequency;
+        filter = std::filters::simper::Processor;
     }
 
     connection {
-        eventIn -> NoteToFrequency -> oscillator.frequencyIn;
+        eventIn -> noteToFrequency;
+        noteToFrequency -> oscillator.frequencyIn;
+        noteToFrequency -> Double -> filter.frequency;
         eventIn -> envelope.eventIn;
-        (oscillator.out * envelope.gainOut) -> out;
+        (oscillator.out * envelope.gainOut) -> filter.in;
+        filter.out -> out;
     }
 }
