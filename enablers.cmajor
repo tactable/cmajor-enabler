@@ -1,43 +1,49 @@
 
 /**
- * Let's try to do the minimum amount of work to make our "midi" input work.
- * If a note is pressed we set isPlaying to true, when a note is released we
- * set it to false.
+ * Let's make our solution better.
  *
- * We also use a function provided by Cmajor to extract the frequency for a
- * given midi note.
+ * Instead of a binary state for "is playing" it's better to use an envelope.
  *
- * Now we can play the keyboard, but there's a few issues...
+ * The envelope describes the volume of our sound over time.
+ *
+ * There are different kinds of envelopes. Here we use one that allows us to
+ * set two parameters:
+ * - Attack describes how long a sound "fades in". A "short attack" means a
+ *   sound will be at full volume very quickly, a "long attack" means the sound
+ *   will build up for some time.
+ * - Release is kind of the opposite. It describes how long a sound will fade
+ *   out after the note is released.
  */
 
 graph Main  [[ main ]] {
     output stream float out;
     input event std::midi::Message midiIn;
 
-    node generator = SoundGenerator;
+    node {
+        generator = SoundGenerator;
+        converter = std::midi::MPEConverter;
+        envelope = std::envelopes::FixedASR(0.1f, 0.1f);
+    }
 
-    connection midiIn -> std::midi::MPEConverter -> generator.eventIn;
-    connection generator.out -> out;
+    connection {
+        midiIn -> converter;
+        converter -> generator.eventIn;
+        converter -> envelope.eventIn;
+        (generator.out * envelope.gainOut) -> out;
+    }
 }
 
 processor SoundGenerator {
     output stream float out;
-    input event (std::notes::NoteOn, std::notes::NoteOff) eventIn;
+    input event (std::notes::NoteOn) eventIn;
     
     event eventIn(std::notes::NoteOn e) {
-        isPlaying = true;
         frequency = std::notes::noteToFrequency(e.pitch);
-    }
-
-    event eventIn(std::notes::NoteOff e) {
-        isPlaying = false;
     }
 
     void main() {
         loop {
-            if (isPlaying) {
-                out <- volume * sin (phase);
-            }
+            out <- volume * sin (phase);
 
             let phaseDelta = float (frequency * processor.period * twoPi);
             phase = addModulo2Pi (phase, phaseDelta);
@@ -48,5 +54,4 @@ processor SoundGenerator {
     let volume = 0.15f;
     float phase;
     float frequency = 440.0f;
-    bool isPlaying = false;
 }
