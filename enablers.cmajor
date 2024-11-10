@@ -1,24 +1,34 @@
 
 /**
- * We're adding a "graph". This is an abstraction in Cmajor that allows us to
- * easily connect things.
+ * Now we're connecting "midi" to our "patch".
+ * - a "patch" is what a program is called in cmajor
+ * - "midi" describes what notes we want to play
  *
- * For the purpose of the enabler session this allows us to more easily use
- * some of the features from the standard library.
+ * By doing this, if we run the patch we'll see a piano keyboard has been added.
+ * We can play this piano keyboard with the A-L row on the computer keyboard.
+ * As we didn't connect the events below yet, this will not yet have an effect
+ * on the sound. We will explore that in the next steps.
  */
 
 graph Main  [[ main ]] {
     output stream float out;
+    input event std::midi::Message midiIn;
     input generator.frequency;
 
     node generator = SoundGenerator;
 
+    connection midiIn -> std::midi::MPEConverter -> generator.eventIn;
     connection generator.out -> out;
 }
 
 processor SoundGenerator {
     output stream float out;
+    input event (std::notes::NoteOn, std::notes::NoteOff) eventIn;
     input value float frequency [[ name: "Frequency", min: 5.0f, max: 1000.0f, init: 440.0f ]];
+
+    event eventIn(std::notes::NoteOn e) {}
+
+    event eventIn(std::notes::NoteOff e) {}
 
     void main() {
         loop {
